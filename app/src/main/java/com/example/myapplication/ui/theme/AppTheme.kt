@@ -1,5 +1,9 @@
 package com.example.myapplication.ui.theme
 
+// This file is deprecated and superseded by Theme.kt which contains the actual theme implementation.
+// Keeping this file empty (or with non-conflicting names) to avoid overload resolution ambiguity.
+
+/*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -20,3 +24,4 @@ fun ChatAppTheme(themeMode: AppThemeMode, content: @Composable () -> Unit) {
         content = content
     )
 }
+*/

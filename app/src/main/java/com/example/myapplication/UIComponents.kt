@@ -1,22 +1,28 @@
 package com.example.myapplication
 
 import android.content.Context
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,11 +31,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,9 +49,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.myapplication.ui.theme.AiMessageBackground
+import com.example.myapplication.ui.theme.AppBackground
+import com.example.myapplication.ui.theme.InputBackground
+import com.example.myapplication.ui.theme.SurfaceWhite
+import com.example.myapplication.ui.theme.TextOnYellow
+import com.example.myapplication.ui.theme.TextPrimary
+import com.example.myapplication.ui.theme.TextSecondary
+import com.example.myapplication.ui.theme.UserMessageBackground
+import com.example.myapplication.ui.theme.YandexYellow
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -79,12 +99,26 @@ data class ChatSession(
 @Composable
 fun AppTopBar(title: String, onMenuClick: () -> Unit) {
     TopAppBar(
-        title = { Text(text = title) },
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
         navigationIcon = {
             IconButton(onClick = onMenuClick) {
-                Icon(imageVector = Icons.Filled.Menu, contentDescription = "Menu")
+                Icon(
+                    imageVector = Icons.Filled.Menu,
+                    contentDescription = "Menu",
+                    tint = TextPrimary
+                )
             }
-        }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = SurfaceWhite,
+            titleContentColor = TextPrimary
+        )
     )
 }
 
@@ -94,18 +128,31 @@ fun AppDrawer(
     onDestinationSelected: (String) -> Unit
 ) {
     val screens = listOf(AppScreen.Chat, AppScreen.Library, AppScreen.Settings)
-    ModalDrawerSheet {
+    ModalDrawerSheet(
+        drawerContainerColor = SurfaceWhite
+    ) {
         Text(
             text = "Menu",
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
-            style = MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
         )
         screens.forEach { screen ->
             NavigationDrawerItem(
-                label = { Text(text = screenTitleForRoute(screen.name)) },
+                label = {
+                    Text(
+                        text = screenTitleForRoute(screen.name),
+                        color = TextPrimary
+                    )
+                },
                 selected = currentRoute == screen.name,
                 onClick = { onDestinationSelected(screen.name) },
-                modifier = Modifier.padding(horizontal = 12.dp)
+                modifier = Modifier.padding(horizontal = 12.dp),
+                colors = NavigationDrawerItemDefaults.colors(
+                    selectedContainerColor = UserMessageBackground,
+                    unselectedContainerColor = Color.Transparent
+                )
             )
         }
     }
@@ -130,66 +177,157 @@ fun ChatScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+            .background(AppBackground)
     ) {
-        Text(text = chatSession.title, fontWeight = FontWeight.SemiBold)
-        Text(text = "Model: ${selectedModel.displayName}")
-        Button(onClick = onStartNewChat) {
-            Text(text = "Start New Chat")
+        // Header section
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(SurfaceWhite)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = chatSession.title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Model: ${selectedModel.displayName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+
+                TextButton(onClick = onStartNewChat) {
+                    Text(
+                        text = "New Chat",
+                        color = YandexYellow,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
+
+        // Messages list
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            reverseLayout = false
+            contentPadding = PaddingValues(
+                horizontal = 16.dp,
+                vertical = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
                 items = chatSession.messages,
                 key = { it.id }
             ) { message ->
                 val alignment = if (message.isUser) Alignment.CenterEnd else Alignment.CenterStart
-                val containerColor = if (message.isUser) {
-                    MaterialTheme.colorScheme.primaryContainer
+                val backgroundColor = if (message.isUser) UserMessageBackground else AiMessageBackground
+
+                val shape = if (message.isUser) {
+                    RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 4.dp
+                    )
                 } else {
-                    MaterialTheme.colorScheme.secondaryContainer
+                    RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 4.dp,
+                        bottomEnd = 20.dp
+                    )
                 }
+
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = alignment
                 ) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = containerColor)
+                    Surface(
+                        color = backgroundColor,
+                        shape = shape,
+                        shadowElevation = if (!message.isUser) 2.dp else 0.dp,
+                        modifier = Modifier.widthIn(max = 280.dp)
                     ) {
                         Text(
                             text = message.text,
-                            modifier = Modifier.padding(12.dp),
-                            textAlign = if (message.isUser) TextAlign.End else TextAlign.Start
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(
+                                horizontal = 16.dp,
+                                vertical = 12.dp
+                            )
                         )
                     }
                 }
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+
+        // Input bar
+        Surface(
+            color = SurfaceWhite,
+            shadowElevation = 4.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedTextField(
-                value = messageText,
-                onValueChange = { messageText = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text(text = "Message") }
-            )
-            Button(
-                onClick = {
-                    onSendMessage(messageText)
-                    messageText = ""
-                },
-                enabled = messageText.isNotBlank()
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Send")
+                TextField(
+                    value = messageText,
+                    onValueChange = { messageText = it },
+                    modifier = Modifier.weight(1f),
+                    placeholder = {
+                        Text(
+                            text = "Message",
+                            color = TextSecondary
+                        )
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = InputBackground,
+                        unfocusedContainerColor = InputBackground,
+                        disabledContainerColor = InputBackground,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    textStyle = MaterialTheme.typography.bodyLarge
+                )
+
+                IconButton(
+                    onClick = {
+                        onSendMessage(messageText)
+                        messageText = ""
+                    },
+                    enabled = messageText.isNotBlank(),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            color = if (messageText.isNotBlank()) YandexYellow else Color.Gray.copy(
+                                alpha = 0.3f
+                            ),
+                            shape = CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = if (messageText.isNotBlank()) TextOnYellow else Color.Gray
+                    )
+                }
             }
         }
     }
@@ -204,27 +342,61 @@ fun LibraryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(AppBackground)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = "Library", fontWeight = FontWeight.Bold)
+        Text(
+            text = "Library",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+
         if (chats.isEmpty()) {
-            Text(text = "No saved chats")
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No saved chats",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(chats) { chat ->
-                    val containerColor =
-                        if (chat.id == activeChatId) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant
+                    val isActive = chat.id == activeChatId
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = containerColor),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isActive) UserMessageBackground else SurfaceWhite
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = if (isActive) 0.dp else 2.dp
+                        ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onChatSelected(chat.id) }
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(text = chat.title, fontWeight = FontWeight.SemiBold)
-                            Text(text = "${chat.messages.size} messages")
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = chat.title,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = "${chat.messages.size} messages",
+                                color = TextSecondary,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                     }
                 }
@@ -243,16 +415,36 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(AppBackground)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Settings", fontWeight = FontWeight.Bold)
-        Text(text = "Theme")
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+
+        Text(
+            text = "Theme",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary
+        )
+
         ThemeSelectionRow(
             currentTheme = themeMode,
             onThemeModeChange = onThemeModeChange
         )
-        Text(text = "Model")
+
+        Text(
+            text = "Model",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = TextPrimary
+        )
+
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -263,24 +455,36 @@ fun SettingsScreen(
                         .clickable { onModelChange(model) },
                     colors = CardDefaults.cardColors(
                         containerColor = if (model == selectedModel) {
-                            MaterialTheme.colorScheme.primaryContainer
+                            YandexYellow.copy(alpha = 0.15f)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant
+                            SurfaceWhite
                         }
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = if (model == selectedModel) 0.dp else 2.dp
                     )
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         RadioButton(
                             selected = model == selectedModel,
-                            onClick = { onModelChange(model) }
+                            onClick = { onModelChange(model) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = YandexYellow,
+                                unselectedColor = TextSecondary
+                            )
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(text = model.displayName)
+                        Text(
+                            text = model.displayName,
+                            color = TextPrimary,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                     }
                 }
             }
@@ -293,7 +497,9 @@ fun ThemeSelectionRow(
     currentTheme: AppThemeMode,
     onThemeModeChange: (AppThemeMode) -> Unit
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         ThemeChoiceButton(
             text = "Light",
             selected = currentTheme == AppThemeMode.Light,
@@ -314,12 +520,28 @@ fun ThemeChoiceButton(
     onClick: () -> Unit
 ) {
     if (selected) {
-        Button(onClick = onClick) {
-            Text(text = text)
+        Button(
+            onClick = onClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = YandexYellow,
+                contentColor = TextOnYellow
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                text = text,
+                fontWeight = FontWeight.Medium
+            )
         }
     } else {
-        TextButton(onClick = onClick) {
-            Text(text = text)
+        TextButton(
+            onClick = onClick,
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                text = text,
+                color = TextSecondary
+            )
         }
     }
 }

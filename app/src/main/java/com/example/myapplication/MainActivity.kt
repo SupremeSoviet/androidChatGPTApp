@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
                 val assistantMessage = ChatMessage(assistantMsgId, "", false)
 
                 val newMessages = currentChat.messages + userMessage + assistantMessage
-                var updatedChat = currentChat.copy(messages = newMessages)
+                val updatedChat = currentChat.copy(messages = newMessages)
                 currentChat = updatedChat
                 saveChat(updatedChat)
 
