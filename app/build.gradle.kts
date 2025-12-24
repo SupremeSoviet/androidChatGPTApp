@@ -56,10 +56,10 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+    implementation("com.google.code.gson:gson:2.10.1")
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }
-

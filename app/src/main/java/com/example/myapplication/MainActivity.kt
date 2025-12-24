@@ -1,6 +1,8 @@
 ﻿package com.example.myapplication
 
+import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -52,6 +54,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.myapplication.ui.theme.ChatAppTheme
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,45 +65,115 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
-suspend fun getAssistantReplyFromProxyApi(inputText: String, apiKey: String): String {
-    return withContext(Dispatchers.IO) {
-        val client = OkHttpClient()
+suspend fun getAssistantReplyFromProxyApi(
+    inputText: String,
+    apiKey: String,
+    onChunkReceived: suspend (String) -> Unit
+) {
+    withContext(Dispatchers.IO) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .build()
+
+        val messagesArray = JSONArray()
+        val userMessage = JSONObject().apply {
+            put("role", "user")
+            put("content", inputText)
+        }
+        messagesArray.put(userMessage)
+
         val json = JSONObject()
         json.put("model", "gpt-5-nano")
-        json.put("input", inputText)
+        json.put("messages", messagesArray)
+        json.put("stream", true)
+
         val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         val request = Request.Builder()
-            .url("https://api.proxyapi.ru/openai/v1/responses")
+            .url("https://api.proxyapi.ru/openai/v1/chat/completions")
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer abacabad")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Cache-Control", "no-cache")
+            .addHeader("Accept", "text/event-stream")
+            .post(body)
+            .build()
+
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.e("StreamError", "Code: ${response.code}")
+                    return@withContext
+                }
+
+                val source = response.body?.source() ?: return@withContext
+
+                while (!source.exhausted()) {
+                    val line = source.readUtf8Line() ?: break
+
+                    if (line.startsWith("data:")) {
+                        val data = line.substringAfter("data:").trim()
+                        if (data == "[DONE]") break
+                        try {
+                            val jsonObj = JSONObject(data)
+                            val choices = jsonObj.optJSONArray("choices")
+                            if (choices != null && choices.length() > 0) {
+                                val delta = choices.getJSONObject(0).optJSONObject("delta")
+                                val content = delta?.optString("content")
+                                if (!content.isNullOrEmpty()) {
+                                    onChunkReceived(content)
+                                }
+                            }
+                        } catch (e: Exception) {
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("NetworkError", "Connection error", e)
+            onChunkReceived("\n[Ошибка сети: ${e.localizedMessage}]")
+        }
+    }
+}
+suspend fun generateChatTitle(userMessage: String, apiKey: String): String {
+    return withContext(Dispatchers.IO) {
+        val client = OkHttpClient()
+        val messagesArray = JSONArray()
+        messagesArray.put(JSONObject().apply {
+            put("role", "user")
+            put("content", "Summarize this message into a short title (max 4 words). Do not use quotes.\n\nMessage: $userMessage")
+        })
+
+        val json = JSONObject()
+        json.put("model", "gpt-5-nano")
+        json.put("messages", messagesArray)
+
+        val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url("https://api.proxyapi.ru/openai/v1/chat/completions")
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
             .post(body)
             .build()
         try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext "Ошибка ${response.code}"
-                }
+                if (!response.isSuccessful) return@withContext "New Chat"
                 val text = response.body?.string().orEmpty()
                 val obj = JSONObject(text)
-                if (obj.has("output_text")) {
-                    return@withContext obj.getString("output_text")
-                }
-                val output = obj.optJSONArray("output") ?: JSONArray()
-                if (output.length() > 0) {
-                    val content = output.getJSONObject(0).optJSONArray("content") ?: JSONArray()
-                    if (content.length() > 0) {
-                        val c0 = content.getJSONObject(0)
-                        val t = c0.optString("text")
-                        if (t.isNotBlank()) {
-                            return@withContext t
-                        }
+                val choices = obj.optJSONArray("choices")
+                if (choices != null && choices.length() > 0) {
+                    val message = choices.getJSONObject(0).optJSONObject("message")
+                    val content = message?.optString("content")
+                    if (!content.isNullOrEmpty()) {
+                        return@withContext content.trim().removeSurrounding("\"")
                     }
                 }
-                "Пустой ответ"
+                "New Chat"
             }
         } catch (e: Exception) {
-            "Ошибка сети"
+            "New Chat"
         }
     }
 }
@@ -131,7 +205,8 @@ data class ChatMessage(
 
 data class ChatSession(
     val id: Int,
-    val messages: List<ChatMessage>
+    val messages: List<ChatMessage>,
+    var title: String = "New Chat"
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -155,7 +230,7 @@ fun AppDrawer(
     val screens = listOf(AppScreen.Chat, AppScreen.Library, AppScreen.Settings)
     ModalDrawerSheet {
         Text(
-            text = "Меню",
+            text = "Menu",
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
             style = MaterialTheme.typography.titleMedium
         )
@@ -184,10 +259,10 @@ fun ChatScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = "Активный диалог ${chatSession.id}", fontWeight = FontWeight.SemiBold)
-        Text(text = "Модель: ${selectedModel.displayName}")
+        Text(text = "Chat ${chatSession.id}", fontWeight = FontWeight.SemiBold)
+        Text(text = "Model: ${selectedModel.displayName}")
         Button(onClick = onStartNewChat) {
-            Text(text = "Начать новый диалог")
+            Text(text = "Start New Chat")
         }
         LazyColumn(
             modifier = Modifier
@@ -196,7 +271,10 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             reverseLayout = false
         ) {
-            items(chatSession.messages) { message ->
+            items(
+                items = chatSession.messages,
+                key = { it.id }
+            ) { message ->
                 val alignment = if (message.isUser) Alignment.CenterEnd else Alignment.CenterStart
                 val containerColor = if (message.isUser) {
                     MaterialTheme.colorScheme.primaryContainer
@@ -227,7 +305,7 @@ fun ChatScreen(
                 value = messageText,
                 onValueChange = { messageText = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text(text = "Сообщение") }
+                placeholder = { Text(text = "Message") }
             )
             Button(
                 onClick = {
@@ -236,7 +314,7 @@ fun ChatScreen(
                 },
                 enabled = messageText.isNotBlank()
             ) {
-                Text(text = "Отправить")
+                Text(text = "Send")
             }
         }
     }
@@ -254,9 +332,9 @@ fun LibraryScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = "Библиотека", fontWeight = FontWeight.Bold)
+        Text(text = "Library", fontWeight = FontWeight.Bold)
         if (chats.isEmpty()) {
-            Text(text = "Пока нет сохранённых диалогов")
+            Text(text = "No saved chats")
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(chats) { chat ->
@@ -270,8 +348,8 @@ fun LibraryScreen(
                             .clickable { onChatSelected(chat.id) }
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text(text = chat.id.toString(), fontWeight = FontWeight.SemiBold)
-                            Text(text = "${chat.messages.size} сообщений")
+                            Text(text = chat.title, fontWeight = FontWeight.SemiBold)
+                            Text(text = "${chat.messages.size} messages")
                         }
                     }
                 }
@@ -293,13 +371,13 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Настройки", fontWeight = FontWeight.Bold)
-        Text(text = "Тема")
+        Text(text = "Settings", fontWeight = FontWeight.Bold)
+        Text(text = "Theme")
         ThemeSelectionRow(
             currentTheme = themeMode,
             onThemeModeChange = onThemeModeChange
         )
-        Text(text = "Модель")
+        Text(text = "Model")
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -342,12 +420,12 @@ fun ThemeSelectionRow(
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         ThemeChoiceButton(
-            text = "Светлая",
+            text = "Light",
             selected = currentTheme == AppThemeMode.Light,
             onClick = { onThemeModeChange(AppThemeMode.Light) }
         )
         ThemeChoiceButton(
-            text = "Тёмная",
+            text = "Dark",
             selected = currentTheme == AppThemeMode.Dark,
             onClick = { onThemeModeChange(AppThemeMode.Dark) }
         )
@@ -373,22 +451,48 @@ fun ThemeChoiceButton(
 
 fun screenTitleForRoute(route: String): String {
     return when (route) {
-        AppScreen.Chat.name -> "Новый диалог"
-        AppScreen.Library.name -> "Библиотека"
-        AppScreen.Settings.name -> "Настройки"
-        else -> "Новый диалог"
+        AppScreen.Chat.name -> "New Chat"
+        AppScreen.Library.name -> "Library"
+        AppScreen.Settings.name -> "Settings"
+        else -> "New Chat"
+    }
+}
+
+private fun saveChatsToPrefs(context: Context, chats: List<ChatSession>) {
+    val sharedPrefs = context.getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+    val editor = sharedPrefs.edit()
+    val gson = Gson()
+    val json = gson.toJson(chats)
+    editor.putString("chats_data", json)
+    editor.apply()
+}
+
+private fun getChatsFromPrefs(context: Context): List<ChatSession> {
+    val sharedPrefs = context.getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+    val json = sharedPrefs.getString("chats_data", null)
+    return if (json != null) {
+        val gson = Gson()
+        val type = object : TypeToken<List<ChatSession>>() {}.type
+        gson.fromJson(json, type)
+    } else {
+        emptyList()
     }
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val loadedChats = getChatsFromPrefs(this)
+        val initialChat = if (loadedChats.isNotEmpty()) loadedChats.first() else ChatSession(id = 1, messages = emptyList())
+        val initialNextId = if (loadedChats.isNotEmpty()) (loadedChats.maxOfOrNull { it.id } ?: 0) + 1 else 2
+
         setContent {
             var themeMode by rememberSaveable { mutableStateOf(AppThemeMode.Light) }
             var selectedModel by rememberSaveable { mutableStateOf(ChatModel.GPT5) }
-            var chats by remember { mutableStateOf(listOf<ChatSession>()) }
-            var currentChat by remember { mutableStateOf(ChatSession(id = 1, messages = emptyList())) }
-            var nextChatId by remember { mutableStateOf(2) }
+            var chats by remember { mutableStateOf(loadedChats) }
+            var currentChat by remember { mutableStateOf(initialChat) }
+            var nextChatId by remember { mutableStateOf(initialNextId) }
             val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
             val navController = rememberNavController()
             val scope = rememberCoroutineScope()
@@ -402,30 +506,51 @@ class MainActivity : ComponentActivity() {
                 } else {
                     chats.toMutableList().also { it[index] = updatedChat }
                 }
+                saveChatsToPrefs(this@MainActivity, chats)
             }
 
             fun handleSendMessage(text: String) {
                 if (text.isBlank()) return
                 val cleanedText = text.trim()
-                val userMessage = ChatMessage(
-                    id = System.currentTimeMillis(),
-                    text = cleanedText,
-                    isUser = true
-                )
-                val updatedChatBefore = currentChat.copy(messages = currentChat.messages + userMessage)
-                currentChat = updatedChatBefore
-                saveChat(updatedChatBefore)
+
+                val userMsgId = System.currentTimeMillis()
+                val userMessage = ChatMessage(userMsgId, cleanedText, true)
+
+                val assistantMsgId = userMsgId + 1
+                val assistantMessage = ChatMessage(assistantMsgId, "", false)
+
+                val newMessages = currentChat.messages + userMessage + assistantMessage
+                var updatedChat = currentChat.copy(messages = newMessages)
+                currentChat = updatedChat
+                saveChat(updatedChat)
+
                 scope.launch {
-                    val replyText = getAssistantReplyFromProxyApi(cleanedText, ApiConfig.proxyApiKey)
-                    val assistantMessage = ChatMessage(
-                        id = System.currentTimeMillis() + 1,
-                        text = replyText,
-                        isUser = false
-                    )
-                    val updatedChatAfter =
-                        currentChat.copy(messages = currentChat.messages + assistantMessage)
-                    currentChat = updatedChatAfter
-                    saveChat(updatedChatAfter)
+                    var accumulatedText = ""
+                    getAssistantReplyFromProxyApi(cleanedText, ApiConfig.proxyApiKey) { chunk ->
+                        withContext(Dispatchers.Main) {
+                            accumulatedText += chunk
+                            val currentMessages = currentChat.messages.toMutableList()
+                            val msgIndex = currentMessages.indexOfFirst { it.id == assistantMsgId }
+                            if (msgIndex != -1) {
+                                currentMessages[msgIndex] = currentMessages[msgIndex].copy(text = accumulatedText)
+                                currentChat = currentChat.copy(messages = currentMessages)
+                            }
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        saveChat(currentChat)
+                        if (currentChat.messages.size <= 2) {
+                            launch(Dispatchers.IO) {
+                                val newTitle = generateChatTitle(cleanedText, ApiConfig.proxyApiKey)
+                                withContext(Dispatchers.Main) {
+                                    val titledChat = currentChat.copy(title = newTitle)
+                                    currentChat = titledChat
+                                    saveChat(titledChat)
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -449,9 +574,7 @@ class MainActivity : ComponentActivity() {
                             AppTopBar(
                                 title = screenTitleForRoute(currentRoute),
                                 onMenuClick = {
-                                    scope.launch {
-                                        drawerState.open()
-                                    }
+                                    scope.launch { drawerState.open() }
                                 }
                             )
                         }
@@ -465,12 +588,9 @@ class MainActivity : ComponentActivity() {
                                 ChatScreen(
                                     chatSession = currentChat,
                                     selectedModel = selectedModel,
-                                    onSendMessage = { text ->
-                                        handleSendMessage(text)
-                                    },
+                                    onSendMessage = { text -> handleSendMessage(text) },
                                     onStartNewChat = {
-                                        val newChat =
-                                            ChatSession(id = nextChatId, messages = emptyList())
+                                        val newChat = ChatSession(id = nextChatId, messages = emptyList())
                                         chats = chats + newChat
                                         currentChat = newChat
                                         nextChatId += 1
@@ -496,13 +616,9 @@ class MainActivity : ComponentActivity() {
                             composable(AppScreen.Settings.name) {
                                 SettingsScreen(
                                     themeMode = themeMode,
-                                    onThemeModeChange = { mode ->
-                                        themeMode = mode
-                                    },
+                                    onThemeModeChange = { themeMode = it },
                                     selectedModel = selectedModel,
-                                    onModelChange = { model ->
-                                        selectedModel = model
-                                    }
+                                    onModelChange = { selectedModel = it }
                                 )
                             }
                         }

@@ -1,5 +1,5 @@
 ﻿package com.example.myapplication
 
 object ApiConfig {
-    val proxyApiKey = "emptyyyyyyyy"
+    const val proxyApiKey = "PROXY-API-KEY"
 }
