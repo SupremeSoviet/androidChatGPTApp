@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Button
@@ -38,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -253,18 +255,27 @@ fun ChatScreen(
     onStartNewChat: () -> Unit
 ) {
     var messageText by rememberSaveable(chatSession.id) { mutableStateOf("") }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(chatSession.messages.size, chatSession.messages.lastOrNull()?.text) {
+        if (chatSession.messages.isNotEmpty()) {
+            listState.animateScrollToItem(chatSession.messages.size - 1)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(text = "Chat ${chatSession.id}", fontWeight = FontWeight.SemiBold)
+        Text(text = chatSession.title, fontWeight = FontWeight.SemiBold)
         Text(text = "Model: ${selectedModel.displayName}")
         Button(onClick = onStartNewChat) {
             Text(text = "Start New Chat")
         }
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
@@ -571,8 +582,13 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Scaffold(
                         topBar = {
+                            val title = if (currentRoute == AppScreen.Chat.name) {
+                                currentChat.title
+                            } else {
+                                screenTitleForRoute(currentRoute)
+                            }
                             AppTopBar(
-                                title = screenTitleForRoute(currentRoute),
+                                title = title,
                                 onMenuClick = {
                                     scope.launch { drawerState.open() }
                                 }
@@ -581,7 +597,7 @@ class MainActivity : ComponentActivity() {
                     ) { innerPadding ->
                         NavHost(
                             navController = navController,
-                            startDestination = AppScreen.Chat.name,
+                            startDestination = AppScreen.Library.name,
                             modifier = Modifier.padding(innerPadding)
                         ) {
                             composable(AppScreen.Chat.name) {
