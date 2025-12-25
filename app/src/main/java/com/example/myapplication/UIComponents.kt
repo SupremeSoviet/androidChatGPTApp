@@ -134,7 +134,6 @@ val RussianStrings = AppStrings(
     messagesCount = "сообщений"
 )
 
-// ---------------------------
 
 enum class AppScreen {
     Chat,
